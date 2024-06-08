@@ -1,11 +1,11 @@
 {
-    "name": "travelit",
-    "short_name": "travelit",
+    "name": "zapp",
+    "short_name": "zapp",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Travel Mark App",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

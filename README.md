@@ -1,6 +1,6 @@
-# travelit
+# zapp
 
-A new Flutter project.
+Travel Mark App
 
 ## Getting Started
 
