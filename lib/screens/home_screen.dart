@@ -12,7 +12,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   List<Marker> _markers = [];
-  Marker? _currentMarker;
+  List<Marker> _currentMarker = [];
 
   @override
   Widget build(BuildContext context) {
@@ -39,12 +39,23 @@ class _MyHomePageState extends State<MyHomePage> {
                 initialZoom: 9.2,
                 onTap: (point, latLng) {
                   setState(() {
-                    _currentMarker = Marker(
-                      point: latLng,
-                      width: 30,
-                      height: 30,
-                      child: Icon(Icons.location_pin),
-                    );
+                    if (_currentMarker.isNotEmpty) {
+                      _currentMarker[0] = Marker(
+                        point: latLng,
+                        width: 200,
+                        height: 200,
+                        child: Icon(Icons.location_on_outlined),
+                      );
+                    } else {
+                      _currentMarker.add(
+                        Marker(
+                          point: latLng,
+                          width: 200,
+                          height: 200,
+                          child: Icon(Icons.location_on_outlined),
+                        ),
+                      );
+                    }
                   });
                 },
               ),
@@ -54,7 +65,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   userAgentPackageName: 'com.example.app',
                 ),
                 MarkerLayer(
-                  markers: _markers,
+                  markers: [..._markers, ..._currentMarker],
                 ),
               ],
             ),
@@ -66,10 +77,18 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 ElevatedButton(
                   onPressed: () {
-                    if (_currentMarker != null) {
+                    if (_currentMarker.isNotEmpty) {
                       setState(() {
-                        _markers.add(_currentMarker!);
-                        _currentMarker = null;
+                        _currentMarker.add(
+                          Marker(
+                            point: _currentMarker.last.point,
+                            width: 100,
+                            height: 100,
+                            child: Icon(Icons.location_pin),
+                          ),
+                        );
+                        _markers.add(_currentMarker[1]);
+                        _currentMarker.clear();
                       });
                     }
                   },
@@ -77,10 +96,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    // Handle button press
-                    print("Button 2 pressed");
+                    setState(() {
+                      _currentMarker.clear();
+                    });
                   },
-                  child: Text('Button 2'),
+                  child: Text('Cancel Marker'),
                 ),
               ],
             ),
