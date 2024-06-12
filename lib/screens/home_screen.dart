@@ -4,6 +4,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mysql1/mysql1.dart';
 
+import 'EditMarkerPage.dart';
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
 
@@ -67,12 +69,26 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: const Text('Interactive World Map'),
         actions: [
-          IconButton(
+          PopupMenuButton(
             icon: const Icon(Icons.menu),
-            onPressed: () {
-              // Handle menu button press
-              
+            onSelected: (value) {
+              if (value == 'Edit Marker') {
+                Navigator.push(
+                    context,
+                MaterialPageRoute(
+                    builder: (context) => EditMarkerPage(
+
+                ),
+              ),
+              );
+              }
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'Edit Marker',
+                child: Text('Edit Marker'),
+              ),
+            ],
           ),
         ],
       ),
