@@ -3,16 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mysql1/mysql1.dart';
-
 import 'EditMarkerPage.dart';
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  final String username;
+  final int userid;
+
+   const MyHomePage({super.key, required this.username, required this.userid});
 
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
-
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   final List<Marker> _markers = [];
@@ -23,7 +24,6 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _connectToDatabase();
-
   }
 
   Future<void> _connectToDatabase() async {
@@ -38,7 +38,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _loadMarkersFromDatabase() async {
-    final results = await _conn.query('SELECT * FROM markers');
+    final results = await _conn.query('SELECT * FROM markers WHERE userid = ?', [widget.userid]);
 
     for (var row in results) {
       _markers.add(
@@ -56,8 +56,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _saveMarkerToDatabase() async {
     if (_currentMarker.isNotEmpty) {
       await _conn.query(
-        'INSERT INTO markers (latitude, longitude) VALUES (?, ?)',
-        [_currentMarker[0].point.latitude,_currentMarker[0].point.longitude]
+        'INSERT INTO markers (latitude, longitude, userid) VALUES (?, ?, ?)',
+        [_currentMarker[0].point.latitude, _currentMarker[0].point.longitude, widget.userid],
       );
       _loadMarkersFromDatabase();
     }
@@ -74,13 +74,14 @@ class _MyHomePageState extends State<MyHomePage> {
             onSelected: (value) {
               if (value == 'Edit Marker') {
                 Navigator.push(
-                    context,
-                MaterialPageRoute(
+                  context,
+                  MaterialPageRoute(
                     builder: (context) => EditMarkerPage(
-
-                ),
-              ),
-              );
+                      username: widget.username,
+                      userId: widget.userid,
+                    ),
+                  ),
+                );
               }
             },
             itemBuilder: (context) => [

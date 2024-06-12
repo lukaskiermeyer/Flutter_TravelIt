@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:zapp/screens/home_screen.dart';
+import 'package:zapp/screens/LoginPage.dart';
+
 
 
 void main() {
@@ -16,7 +17,7 @@ class TravelitApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(),
+      home: LoginPage(),
     );
   }
 }

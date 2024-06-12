@@ -1,13 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:mysql1/mysql1.dart';
 
+import 'HomeScreen.dart';
+
 class EditMarkerPage extends StatefulWidget {
+  final int userId;
+  final String username;
 
-
-
-  const EditMarkerPage({super.key});
+  const EditMarkerPage({super.key, required this.userId, required this.username});
 
   @override
   _EditMarkerPageState createState() => _EditMarkerPageState();
@@ -42,8 +45,6 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
     _connectToDatabase();
   }
 
-
-
   @override
   void dispose() {
     _titleController.dispose();
@@ -52,38 +53,37 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
   }
 
   Future<String> getCountyName(double lat, double long, String type) async {
-   final url = "https://api.geoapify.com/v1/geocode/reverse?lat=$lat&lon=$long&type=$type&apiKey=$apiKey";
-   final response = await http.get(Uri.parse(url));
-   return jsonDecode(response.body)['features'][0]['properties']['formatted'];
+    final url = "https://api.geoapify.com/v1/geocode/reverse?lat=$lat&lon=$long&type=$type&apiKey=$apiKey";
+    final response = await http.get(Uri.parse(url));
+    return jsonDecode(response.body)['features'][0]['properties']['formatted'];
   }
-
 
   Future<void> _fillMarkerList() async {
     markers.clear();
-    final results = await _conn.query('SELECT * FROM markers');
+    final results = await _conn.query('SELECT * FROM markers WHERE userId = ?',
+        [widget.userId]);
 
     for (var row in results) {
       markers.add(
-        dropDownMarker(
-            row[1], row[2], getCountyName(row[1], row[2], "city"), row[0]
-        )
+          dropDownMarker(
+              row[1], row[2], getCountyName(row[1], row[2], "city"), row[0]
+          )
       );
     }
-    print("!!!!");
-    print(markers);
     setState(() {});
   }
 
   Future<void> _storeInfosInDatabase() async {
     if (_selectedMarker != null) {
       await _conn.query(
-        'UPDATE markers SET title = ?, description = ?, ranking = ? WHERE latitude = ? AND longitude = ?',
+        'UPDATE markers SET title = ?, description = ?, ranking = ? WHERE latitude = ? AND longitude = ? AND userId = ?',
         [
           _titleController.text,
           _descriptionController.text,
           _ranking,
           _selectedMarker!.latitude,
           _selectedMarker!.longitude,
+          widget.userId,
         ],
       );
     }
@@ -103,35 +103,46 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
   Future<void> fillFields() async {
     if (_selectedMarker != null) {
       final results = await _conn.query(
-        'SELECT * FROM markers WHERE latitude = ? AND longitude = ?',
-        [_selectedMarker!.latitude, _selectedMarker!.longitude],
+        'SELECT * FROM markers WHERE latitude = ? AND longitude = ? AND userId = ?',
+        [_selectedMarker!.latitude, _selectedMarker!.longitude, widget.userId],
       );
       if (results.isNotEmpty) {
         final row = results.first;
-        print("Row data: $row"); // Debugging line to print fetched row
-        setState(() {
+         setState(() {
           _titleController.text = row['title'] ?? '';
-          _descriptionController.text = row['description'].toString() ?? '';
+          if (row['description'] == null) {
+            _descriptionController.text = "";
+          } else {
+            _descriptionController.text = row['description'].toString();
+          }
           _ranking = row['ranking'] ?? 5.0;
         });
-
-        print("Ranking: ${row['ranking']}"); // Debugging line to check ranking
       } else {
         setState(() {
           _titleController.text = '';
           _descriptionController.text = '';
           _ranking = 5.0;
         });
-        print("No data found for the selected marker."); // Debugging line for empty result
       }
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => MyHomePage(
+                userid: widget.userId,
+                username: widget.username,
+              )),
+              );
+          },
+          child: const Icon(CupertinoIcons.back),
+        ),
         title: const Text('Edit Marker'),
       ),
       body: Padding(
@@ -202,7 +213,10 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
                 _storeInfosInDatabase();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => EditMarkerPage()),
+                  MaterialPageRoute(builder: (context) => EditMarkerPage(
+                    userId: widget.userId,
+                    username: widget.username,
+                  )),
                       (Route<dynamic> route) => false,
                 );
               },
@@ -212,13 +226,15 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
               onPressed: () {
                 if (_selectedMarker != null) {
                   _conn.query(
-                    'DELETE FROM markers WHERE latitude = ? AND longitude = ?',
-                    [_selectedMarker!.latitude, _selectedMarker!.longitude],
+                    'DELETE FROM markers WHERE latitude = ? AND longitude = ? AND userId = ?',
+                    [_selectedMarker!.latitude, _selectedMarker!.longitude, widget.userId],
                   );
-                  Navigator.pushAndRemoveUntil(
+                  Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => EditMarkerPage()),
-                        (Route<dynamic> route) => false,
+                    MaterialPageRoute(builder: (context) => EditMarkerPage(
+                      userId: widget.userId,
+                      username: widget.username,
+                    )),
                   );
                 }
               },
