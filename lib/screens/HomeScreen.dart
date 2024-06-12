@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mysql1/mysql1.dart';
 import 'EditMarkerPage.dart';
+import 'SearchFriends.dart';
 
 class MyHomePage extends StatefulWidget {
   final String username;
@@ -83,11 +84,26 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 );
               }
+              else if (value == 'Find Friends') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SearchfriendsPage(
+                      username: widget.username,
+                      userId: widget.userid,
+                    ),
+                  ),
+                );
+              }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: 'Edit Marker',
                 child: Text('Edit Marker'),
+              ),
+              const PopupMenuItem(
+                value: 'Find Friends',
+                child: Text('Find Friends'),
               ),
             ],
           ),
