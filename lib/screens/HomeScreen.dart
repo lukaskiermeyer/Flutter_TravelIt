@@ -15,15 +15,55 @@ class MyHomePage extends StatefulWidget {
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
+
+class _userColorsClass {
+  late final String username;
+  late final Color color;
+  _userColorsClass({required this.username, required this.color});
+}
+
+class _map {
+  late final int id;
+  late final String name;
+  late List<int> users;
+
+  _map({required this.id, required this.name});
+
+  void setUsers(List<int> users) {
+    this.users = users;
+  }
+}
+
+
+
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   final List<Marker> _markers = [];
   final List<Marker> _currentMarker = [];
   late MySqlConnection _conn;
+  late final List<_map> _maps = [_map(id:0, name:'Meine Map')];
+  late final List<_userColorsClass> _userColorsList = [];
+  late _map _selectedMap;
+
+  List<Color> _userColors = [
+    Colors.black,
+    Colors.red,
+    Colors.blue,
+    Colors.green,
+    Colors.yellow,
+    Colors.purple,
+    Colors.orange,
+    Colors.pink,
+    Colors.teal,
+    Colors.brown,
+  ];
+
 
   @override
   void initState() {
     super.initState();
+    _maps[0].setUsers([widget.userid]);
+    _selectedMap = _maps[0];
     _connectToDatabase();
   }
 
@@ -35,22 +75,70 @@ class _MyHomePageState extends State<MyHomePage> {
       db: 'sql7712971',
       password: 'YnYC9zjPM1',
     ));
+
+    _fillMaps();
     _loadMarkersFromDatabase();
+
+  }
+
+  Future<String> _getUsername(var id) async{
+    final results = await _conn.query('SELECT username FROM travelit_users WHERE id = ?', [id]);
+    return results.first[0];
   }
 
   Future<void> _loadMarkersFromDatabase() async {
-    final results = await _conn.query('SELECT * FROM markers WHERE userid = ?', [widget.userid]);
+    _markers.clear();
+    _userColorsList.clear();
 
-    for (var row in results) {
-      _markers.add(
-        Marker(
-          point: LatLng(row[1], row[2]),
-          width: 30,
-          height: 30,
-          child: const Icon(Icons.location_pin),
-        ),
-      );
+    for (var i = 0; i < _selectedMap.users.length; i++) {
+      //TODO: change color of marker depending on user
+      String username = await _getUsername(_selectedMap.users[i]);
+      _userColorsList.add(_userColorsClass(username: username, color: _userColors[i]));
+
+      final results = await _conn.query(
+          'SELECT * FROM markers WHERE userid = ?', [_selectedMap.users[i]]);
+
+      for (var row in results) {
+        _markers.add(
+          Marker(
+            point: LatLng(row[1], row[2]),
+            width: 30,
+            height: 30,
+            child: Icon(
+              Icons.location_pin,
+              color: _userColors[i],
+            ),
+          ),
+        );
+      }
     }
+
+    setState(() {});
+  }
+
+
+  Future<void> _fillMaps() async {
+    final results = await _conn.query('SELECT DISTINCT tu.map_id, tm.title FROM travelit_mapusers tu JOIN travelit_maps tm ON tu.map_id = tm.id WHERE user_id = ?;', [widget.userid]);
+    for (var row in results) {
+      final map = _map(
+        id: row[0],
+        name: row[1],
+      );
+      _maps.add(map);
+
+    }
+
+    for(var i = 1; i < _maps.length; i++) {
+
+      final results = await _conn.query('SELECT user_id FROM travelit_mapusers WHERE map_id = ?', [_maps[i].id]);
+      List<int> users = [];
+      for (var row in results) {
+        users.add(row[0]);
+      }
+      _maps[i].setUsers(users);
+    }
+
+    _selectedMap = _maps[0];
     setState(() {});
   }
 
@@ -68,7 +156,25 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Interactive World Map'),
+        title: Row(
+        children: [
+          DropdownButton<_map>(
+            value: _selectedMap,
+            items: _maps.map((map) {
+              return DropdownMenuItem<_map>(
+                value: map,
+                child: Text(map.name),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedMap = value!;
+                _loadMarkersFromDatabase();
+              });
+            },
+          ),
+        ],
+      ),
         actions: [
           PopupMenuButton(
             icon: const Icon(Icons.menu),
@@ -97,6 +203,16 @@ class _MyHomePageState extends State<MyHomePage> {
               }
             },
             itemBuilder: (context) => [
+            PopupMenuItem(
+            value: 'User Info',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                'User: ${widget.username}, ID: ${widget.userid}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16.0,
+                ),),),),
               const PopupMenuItem(
                 value: 'Edit Marker',
                 child: Text('Edit Marker'),
@@ -147,6 +263,30 @@ class _MyHomePageState extends State<MyHomePage> {
                 MarkerLayer(
                   markers: [..._markers, ..._currentMarker],
                 ),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Container(
+                    width: 120,
+                    height: 180,
+                    color: Colors.white.withOpacity(0.5),
+                    child: ListView.builder(
+                      itemCount: _userColors.length,
+                      itemBuilder: (context, index) {
+                        final username = _userColorsList[index].username;
+                        final color = _userColorsList[index].color;
+                        return ListTile(
+                          leading: Container(
+                            width: 12,
+                            height: 12,
+                            color: color,
+                          ),
+                          title: Text('$username',
+                              style: TextStyle(fontSize: 11),),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -191,3 +331,5 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+
+
