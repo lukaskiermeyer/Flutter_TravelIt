@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mysql1/mysql1.dart';
 import 'EditMarkerPage.dart';
 import 'SearchFriends.dart';
+import 'package:http/http.dart' as http;
 
 class MyHomePage extends StatefulWidget {
   final String username;
@@ -38,12 +40,15 @@ class _map {
 
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
+  final TextEditingController _searchTextController = TextEditingController();
   final List<Marker> _markers = [];
   final List<Marker> _currentMarker = [];
+  late List<String> _suggestions = [];
   late MySqlConnection _conn;
   late final List<_map> _maps = [_map(id:0, name:'Meine Map')];
   late final List<_userColorsClass> _userColorsList = [];
   late _map _selectedMap;
+  static const String apiKey = "b95c8ec314774f969029f107534ead70";
 
   List<Color> _userColors = [
     Colors.black,
@@ -65,6 +70,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _maps[0].setUsers([widget.userid]);
     _selectedMap = _maps[0];
     _connectToDatabase();
+
   }
 
   Future<void> _connectToDatabase() async {
@@ -91,7 +97,6 @@ class _MyHomePageState extends State<MyHomePage> {
     _userColorsList.clear();
 
     for (var i = 0; i < _selectedMap.users.length; i++) {
-      //TODO: change color of marker depending on user
       String username = await _getUsername(_selectedMap.users[i]);
       _userColorsList.add(_userColorsClass(username: username, color: _userColors[i]));
 
@@ -116,6 +121,26 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {});
   }
 
+  Future<LatLng> _getCoordinates(String city) async {
+    final url = "https://api.geoapify.com/v1/geocode/search?text=$city&format=json&apiKey=$apiKey";
+    final response = await http.get(Uri.parse(url));
+    final jsonData = jsonDecode(response.body);
+    return LatLng(jsonData['results'][0]['lat'], jsonData['results'][0]['lon']);
+  }
+
+
+  Future<List<String>> _getAutoComplete(String city) async {
+    late List<String> suggestions = [];
+    final url = "https://api.geoapify.com/v1/geocode/autocomplete?text=$city&format=json&apiKey=$apiKey";
+    final response = await http.get(Uri.parse(url));
+    final jsonData = jsonDecode(response.body);
+
+    for (var res in jsonData['results']) {
+      suggestions.add(res['formatted']);
+    }
+
+    return suggestions;
+  }
 
   Future<void> _fillMaps() async {
     final results = await _conn.query('SELECT DISTINCT tu.map_id, tm.title FROM travelit_mapusers tu JOIN travelit_maps tm ON tu.map_id = tm.id WHERE user_id = ?;', [widget.userid]);
@@ -157,24 +182,24 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Row(
-        children: [
-          DropdownButton<_map>(
-            value: _selectedMap,
-            items: _maps.map((map) {
-              return DropdownMenuItem<_map>(
-                value: map,
-                child: Text(map.name),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedMap = value!;
-                _loadMarkersFromDatabase();
-              });
-            },
-          ),
-        ],
-      ),
+          children: [
+            DropdownButton<_map>(
+              value: _selectedMap,
+              items: _maps.map((map) {
+                return DropdownMenuItem<_map>(
+                  value: map,
+                  child: Text(map.name),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedMap = value!;
+                  _loadMarkersFromDatabase();
+                });
+              },
+            ),
+          ],
+        ),
         actions: [
           PopupMenuButton(
             icon: const Icon(Icons.menu),
@@ -189,8 +214,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                 );
-              }
-              else if (value == 'Find Friends') {
+              } else if (value == 'Find Friends') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -203,16 +227,19 @@ class _MyHomePageState extends State<MyHomePage> {
               }
             },
             itemBuilder: (context) => [
-            PopupMenuItem(
-            value: 'User Info',
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'User: ${widget.username}, ID: ${widget.userid}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16.0,
-                ),),),),
+              PopupMenuItem(
+                value: 'User Info',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    'User: ${widget.username}, ID: ${widget.userid}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16.0,
+                    ),
+                  ),
+                ),
+              ),
               const PopupMenuItem(
                 value: 'Edit Marker',
                 child: Text('Edit Marker'),
@@ -225,111 +252,160 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: const LatLng(51.509364, -0.128928),
-                initialZoom: 4,
-                onTap: (point, latLng) {
-                  setState(() {
-                    if (_currentMarker.isNotEmpty) {
-                      _currentMarker[0] = Marker(
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: const LatLng(51.509364, -0.128928),
+              initialZoom: 4,
+              onTap: (point, latLng) {
+                setState(() {
+                  if (_currentMarker.isNotEmpty) {
+                    _currentMarker[0] = Marker(
+                      point: latLng,
+                      width: 200,
+                      height: 200,
+                      child: const Icon(Icons.location_on_outlined),
+                    );
+                  } else {
+                    _currentMarker.add(
+                      Marker(
                         point: latLng,
                         width: 200,
                         height: 200,
                         child: const Icon(Icons.location_on_outlined),
-                      );
-                    } else {
-                      _currentMarker.add(
-                        Marker(
-                          point: latLng,
-                          width: 200,
-                          height: 200,
-                          child: const Icon(Icons.location_on_outlined),
-                        ),
-                      );
-                    }
-                  });
-                },
+                      ),
+                    );
+                  }
+                });
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.app',
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.app',
-                ),
-                MarkerLayer(
-                  markers: [..._markers, ..._currentMarker],
-                ),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Container(
-                    width: 120,
-                    height: 180,
-                    color: Colors.white.withOpacity(0.5),
-                    child: ListView.builder(
-                      itemCount: _userColors.length,
-                      itemBuilder: (context, index) {
-                        final username = _userColorsList[index].username;
-                        final color = _userColorsList[index].color;
-                        return ListTile(
-                          leading: Container(
-                            width: 12,
-                            height: 12,
-                            color: color,
-                          ),
-                          title: Text('$username',
-                              style: TextStyle(fontSize: 11),),
-                        );
-                      },
+              MarkerLayer(
+                markers: [..._markers, ..._currentMarker],
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchTextController,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                          color: Colors.grey,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.5),
                     ),
+                    onChanged: (value) async {
+                      if (value.isNotEmpty) {
+                        var suggestions = await _getAutoComplete(value);
+                        setState(() {
+                          _suggestions = suggestions;
+                        });
+                      }
+                    },
                   ),
-                ),
-              ],
+                  if (_suggestions.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      constraints: BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: ListView.builder(
+                        itemCount: _suggestions.length,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                            title: Text(_suggestions[index]),
+                            onTap: () async {
+                              LatLng coordinates = await _getCoordinates(_suggestions[index]);
+                              _mapController.move(coordinates, 17.0);
+                              setState(() {
+                                _suggestions.clear();
+                                _searchTextController.clear();
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    if (_currentMarker.isNotEmpty) {
-                      setState(() async {
-                        _currentMarker.add(
-                          Marker(
-                            point: _currentMarker.last.point,
-                            width: 100,
-                            height: 100,
-                            child: const Icon(Icons.location_pin),
-                          ),
-                        );
-                        //sql query to insert marker
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Container(
+              width: 120,
+              height: 180,
+              color: Colors.white.withOpacity(0.5),
+              child: ListView.builder(
+                itemCount: _userColorsList.length, // Updated from _userColors.length
+                itemBuilder: (context, index) {
+                  final username = _userColorsList[index].username;
+                  final color = _userColorsList[index].color;
+                  return ListTile(
+                    leading: Container(
+                      width: 12,
+                      height: 12,
+                      color: color,
+                    ),
+                    title: Text('$username', style: TextStyle(fontSize: 11)),
+                  );
+                },
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (_currentMarker.isNotEmpty) {
                         await _saveMarkerToDatabase();
+                        setState(() {
+                          _currentMarker.clear();
+                        });
+                      }
+                    },
+                    child: const Text('Save Marker'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
                         _currentMarker.clear();
                       });
-                    }
-                  },
-                  child: const Text('Save Marker'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _currentMarker.clear();
-                    });
-                  },
-                  child: const Text('Cancel Marker'),
-                ),
-              ],
+                    },
+                    child: const Text('Cancel Marker'),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
 }
 
 
