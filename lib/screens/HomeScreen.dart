@@ -36,6 +36,19 @@ class _map {
   }
 }
 
+class _userMarker{
+  late final int id;
+  late final String username;
+  late final String? title;
+  late final String? description;
+  late final String? ranking;
+  late final LatLng point;
+  late final Color color;
+
+  _userMarker({required this.id, required this.username, required this.title, required this.description, required this.ranking, required this.point, required this.color});
+
+}
+
 
 
 class _MyHomePageState extends State<MyHomePage> {
@@ -43,14 +56,16 @@ class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _searchTextController = TextEditingController();
   final List<Marker> _markers = [];
   final List<Marker> _currentMarker = [];
+  final List<_userMarker> _userMarkers = [];
   late List<String> _suggestions = [];
   late MySqlConnection _conn;
   late final List<_map> _maps = [_map(id:0, name:'Meine Map')];
   late final List<_userColorsClass> _userColorsList = [];
   late _map _selectedMap;
   static const String apiKey = "b95c8ec314774f969029f107534ead70";
+  bool _isPanelVisible = false;
 
-  List<Color> _userColors = [
+  final List<Color> _userColors = [
     Colors.black,
     Colors.red,
     Colors.blue,
@@ -87,21 +102,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
   }
 
-  Future<String> _getUsername(var id) async{
-    final results = await _conn.query('SELECT username FROM travelit_users WHERE id = ?', [id]);
-    return results.first[0];
-  }
 
   Future<void> _loadMarkersFromDatabase() async {
     _markers.clear();
-    _userColorsList.clear();
+    _userMarkers.clear();
 
     for (var i = 0; i < _selectedMap.users.length; i++) {
-      String username = await _getUsername(_selectedMap.users[i]);
-      _userColorsList.add(_userColorsClass(username: username, color: _userColors[i]));
-
       final results = await _conn.query(
-          'SELECT * FROM markers WHERE userid = ?', [_selectedMap.users[i]]);
+          'SELECT m.id, m.latitude, m.longitude, m.title, m.description, m.ranking, tu.username FROM markers m JOIN travelit_users tu ON tu.id = m.userId WHERE userid = ?;', [_selectedMap.users[i]]);
 
       for (var row in results) {
         _markers.add(
@@ -115,32 +123,61 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
         );
+        late String ranking;
+        late String description;
+        if (row[5] != null) {
+          ranking = row[5].toStringAsFixed(1);
+        }
+        else {
+          ranking = " ";
+        }
+        if (row[4] != null) {
+          description = row[4].toString();
+        }
+        else {
+          description = " ";
+        }
+
+        _userMarkers.add(
+          _userMarker(
+            id: row[0],
+            point: LatLng(row[1], row[2]),
+            title:  row[3] ?? '',
+            description: description,
+            ranking: ranking,
+            username: row[6],
+            color: _userColors[i],
+          ),
+        );
       }
     }
 
     setState(() {});
   }
 
+
   Future<LatLng> _getCoordinates(String city) async {
     final url = "https://api.geoapify.com/v1/geocode/search?text=$city&format=json&apiKey=$apiKey";
     final response = await http.get(Uri.parse(url));
-    final jsonData = jsonDecode(response.body);
-    return LatLng(jsonData['results'][0]['lat'], jsonData['results'][0]['lon']);
+    if (response.statusCode == 200) {
+      final jsonData = jsonDecode(response.body);
+      return LatLng(jsonData['results'][0]['lat'], jsonData['results'][0]['lon']);
+    } else {
+      throw Exception("Failed to get coordinates");
+    }
   }
-
 
   Future<List<String>> _getAutoComplete(String city) async {
-    late List<String> suggestions = [];
     final url = "https://api.geoapify.com/v1/geocode/autocomplete?text=$city&format=json&apiKey=$apiKey";
     final response = await http.get(Uri.parse(url));
-    final jsonData = jsonDecode(response.body);
-
-    for (var res in jsonData['results']) {
-      suggestions.add(res['formatted']);
+    if (response.statusCode == 200) {
+      final jsonData = jsonDecode(response.body);
+      return List<String>.from(jsonData['results'].map((result) => result['formatted']));
+    } else {
+      throw Exception("Failed to get autocomplete suggestions");
     }
-
-    return suggestions;
   }
+
 
   Future<void> _fillMaps() async {
     final results = await _conn.query('SELECT DISTINCT tu.map_id, tm.title FROM travelit_mapusers tu JOIN travelit_maps tm ON tu.map_id = tm.id WHERE user_id = ?;', [widget.userid]);
@@ -167,11 +204,11 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {});
   }
 
-  Future<void> _saveMarkerToDatabase() async {
+  Future<void> _saveMarkerToDatabase({required String title, required String description, required double ranking}) async {
     if (_currentMarker.isNotEmpty) {
       await _conn.query(
-        'INSERT INTO markers (latitude, longitude, userid) VALUES (?, ?, ?)',
-        [_currentMarker[0].point.latitude, _currentMarker[0].point.longitude, widget.userid],
+        'INSERT INTO markers (latitude, longitude, userid, title, description, ranking) VALUES (?, ?, ?, ?, ?, ?)',
+        [_currentMarker[0].point.latitude, _currentMarker[0].point.longitude, widget.userid, title, description, ranking],
       );
       _loadMarkersFromDatabase();
     }
@@ -321,7 +358,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   if (_suggestions.isNotEmpty)
                     Container(
                       width: double.infinity,
-                      constraints: BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 200),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: Colors.grey),
@@ -355,7 +392,7 @@ class _MyHomePageState extends State<MyHomePage> {
               height: 180,
               color: Colors.white.withOpacity(0.5),
               child: ListView.builder(
-                itemCount: _userColorsList.length, // Updated from _userColors.length
+                itemCount: _userColorsList.length,
                 itemBuilder: (context, index) {
                   final username = _userColorsList[index].username;
                   final color = _userColorsList[index].color;
@@ -365,7 +402,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       height: 12,
                       color: color,
                     ),
-                    title: Text('$username', style: TextStyle(fontSize: 11)),
+                    title: Text(username, style: const TextStyle(fontSize: 11)),
                   );
                 },
               ),
@@ -381,10 +418,65 @@ class _MyHomePageState extends State<MyHomePage> {
                   ElevatedButton(
                     onPressed: () async {
                       if (_currentMarker.isNotEmpty) {
-                        await _saveMarkerToDatabase();
-                        setState(() {
-                          _currentMarker.clear();
-                        });
+                        await showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            String title = '';
+                            String description = '';
+                            double ranking = 0.0;
+
+                            return AlertDialog(
+                              title: const Text('Enter Marker Details'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextField(
+                                    decoration: const InputDecoration(labelText: 'Title'),
+                                    onChanged: (value) {
+                                      title = value;
+                                    },
+                                  ),
+                                  TextField(
+                                    decoration: const InputDecoration(labelText: 'Description'),
+                                    onChanged: (value) {
+                                      description = value;
+                                    },
+                                  ),
+                                  TextField(
+                                    decoration: const InputDecoration(labelText: 'Ranking [0.0-10.0]'),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (value) {
+                                      //TODO: Validate the input
+                                      ranking = double.tryParse(value) ?? 0.0;
+                                    },
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    await _saveMarkerToDatabase(
+                                      title: title,
+                                      description: description,
+                                      ranking: ranking,
+                                    );
+                                    setState(() {
+                                      _currentMarker.clear();
+                                    });
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: const Text('Save'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
                       }
                     },
                     child: const Text('Save Marker'),
@@ -401,11 +493,81 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           ),
+          Positioned(
+            right: 16,
+            top: 100,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isPanelVisible = !_isPanelVisible;
+                });
+              },
+              child: const CircleAvatar(
+                radius: 25,
+                backgroundColor: Colors.black,
+                child: Icon(
+                  Icons.person_pin_circle,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          // Sliding panel
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            right: _isPanelVisible ? 0 : -MediaQuery.of(context).size.width,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: MediaQuery.of(context).size.width,
+              color: Colors.white,
+              child: Column(
+                children: [
+                  AppBar(
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () {
+                        setState(() {
+                          _isPanelVisible = false;
+                        });
+                      },
+                    ),
+                    title: const Text('Marker Details'),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _userMarkers.length,
+                      itemBuilder: (context, index) {
+                        final marker = _userMarkers[index];
+                        return ListTile(
+                          title: Text("Title: ${marker.title}"),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Username: ${marker.username}"),
+                              Text("Description: ${marker.description}"),
+                              Text("Ranking: ${marker.ranking}"),
+                              Text("Lat: ${marker.point.latitude}, Lng: ${marker.point.longitude}"),
+                            ],
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: marker.color,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
-
 }
+
+
+
 
 

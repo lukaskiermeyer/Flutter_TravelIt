@@ -95,8 +95,8 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
     }
   }
 
-  Future<List<UserResult>> _searchForUser(String query) async {
-    final results = await _conn.query('SELECT id, username FROM travelit_users WHERE id LIKE ?', ['%$query%']);
+  Future<List<UserResult>> _searchForUser(String userid) async {
+    final results = await _conn.query('SELECT id, username FROM travelit_users WHERE id = ?', [userid]);
     List<UserResult> userResults = [];
 
     if (results.isNotEmpty) {
