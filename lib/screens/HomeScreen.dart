@@ -18,11 +18,6 @@ class MyHomePage extends StatefulWidget {
   _MyHomePageState createState() => _MyHomePageState();
 }
 
-class _userColorsClass {
-  late final String username;
-  late final Color color;
-  _userColorsClass({required this.username, required this.color});
-}
 
 class _map {
   late final int id;
@@ -60,7 +55,6 @@ class _MyHomePageState extends State<MyHomePage> {
   late List<String> _suggestions = [];
   late MySqlConnection _conn;
   late final List<_map> _maps = [_map(id:0, name:'Meine Map')];
-  late final List<_userColorsClass> _userColorsList = [];
   late _map _selectedMap;
   static const String apiKey = "b95c8ec314774f969029f107534ead70";
   bool _isPanelVisible = false;
@@ -110,8 +104,7 @@ class _MyHomePageState extends State<MyHomePage> {
     for (var i = 0; i < _selectedMap.users.length; i++) {
       final results = await _conn.query(
           'SELECT m.id, m.latitude, m.longitude, m.title, m.description, m.ranking, tu.username FROM markers m JOIN travelit_users tu ON tu.id = m.userId WHERE userid = ?;', [_selectedMap.users[i]]);
-
-      for (var row in results) {
+        for (var row in results) {
         _markers.add(
           Marker(
             point: LatLng(row[1], row[2]),
@@ -386,29 +379,6 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           Align(
-            alignment: Alignment.bottomRight,
-            child: Container(
-              width: 120,
-              height: 180,
-              color: Colors.white.withOpacity(0.5),
-              child: ListView.builder(
-                itemCount: _userColorsList.length,
-                itemBuilder: (context, index) {
-                  final username = _userColorsList[index].username;
-                  final color = _userColorsList[index].color;
-                  return ListTile(
-                    leading: Container(
-                      width: 12,
-                      height: 12,
-                      color: color,
-                    ),
-                    title: Text(username, style: const TextStyle(fontSize: 11)),
-                  );
-                },
-              ),
-            ),
-          ),
-          Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -425,55 +395,80 @@ class _MyHomePageState extends State<MyHomePage> {
                             String description = '';
                             double ranking = 0.0;
 
-                            return AlertDialog(
-                              title: const Text('Enter Marker Details'),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  TextField(
-                                    decoration: const InputDecoration(labelText: 'Title'),
-                                    onChanged: (value) {
-                                      title = value;
-                                    },
+                            return StatefulBuilder(
+                              builder: (context, setState) {
+                                return AlertDialog(
+                                  title: const Text('Enter Marker Details'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextField(
+                                        decoration: const InputDecoration(labelText: 'Title'),
+                                        onChanged: (value) {
+                                          title = value;
+                                        },
+                                      ),
+                                      TextField(
+                                        decoration: const InputDecoration(labelText: 'Description'),
+                                        onChanged: (value) {
+                                          description = value;
+                                        },
+                                      ),
+                                      TextField(
+                                        decoration: const InputDecoration(labelText: 'Ranking [0.0-10.0]'),
+                                        keyboardType: TextInputType.number,
+                                        onChanged: (value) {
+                                          ranking = double.tryParse(value) ?? 0.0;
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                  TextField(
-                                    decoration: const InputDecoration(labelText: 'Description'),
-                                    onChanged: (value) {
-                                      description = value;
-                                    },
-                                  ),
-                                  TextField(
-                                    decoration: const InputDecoration(labelText: 'Ranking [0.0-10.0]'),
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (value) {
-                                      //TODO: Validate the input
-                                      ranking = double.tryParse(value) ?? 0.0;
-                                    },
-                                  ),
-                                ],
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Text('Cancel'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    await _saveMarkerToDatabase(
-                                      title: title,
-                                      description: description,
-                                      ranking: ranking,
-                                    );
-                                    setState(() {
-                                      _currentMarker.clear();
-                                    });
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Text('Save'),
-                                ),
-                              ],
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                      },
+                                      child: const Text('Cancel'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () async {
+                                        // Validierung der Eingaben
+                                        if (title.isEmpty || description.isEmpty || ranking < 0.0 || ranking > 10.0) {
+                                          await showDialog(
+                                            context: context,
+                                            builder: (BuildContext context) {
+                                              return AlertDialog(
+                                                title: const Text('Ungültige Eingabe'),
+                                                content: const Text('Die eingegebene Zahl ist ungültig!'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      Navigator.of(context).pop();
+                                                    },
+                                                    child: const Text('OK'),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+                                          return; // Beende die Methode, wenn die Eingabe ungültig ist
+                                        }
+
+                                        await _saveMarkerToDatabase(
+                                          title: title,
+                                          description: description,
+                                          ranking: ranking,
+                                        );
+                                        setState(() {
+                                          _currentMarker.clear();
+                                        });
+                                        Navigator.of(context).pop();
+                                      },
+                                      child: const Text('Save'),
+                                    ),
+                                  ],
+                                );
+                              },
                             );
                           },
                         );
@@ -540,11 +535,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       itemBuilder: (context, index) {
                         final marker = _userMarkers[index];
                         return ListTile(
-                          title: Text("Title: ${marker.title}"),
+                          title: Text("${marker.title} von ${marker.username}"),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("Username: ${marker.username}"),
                               Text("Description: ${marker.description}"),
                               Text("Ranking: ${marker.ranking}"),
                               Text("Lat: ${marker.point.latitude}, Lng: ${marker.point.longitude}"),
