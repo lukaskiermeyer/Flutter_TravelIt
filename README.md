@@ -1,16 +1,17 @@
-# zapp
+# Project for ZAPP OTH Regensburg
 
-Travel Mark App
+A Flutter app to simplify planning and sharing your travel dreams with friends.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Work in Progress:
+Next Todos:
+- Finish adding AI Suggestion + Improving getting Images for locations
+- Click on Marker --> Show Details
+- Auto Suggestion for Markertitle
+- Search for Restaurants, Attractions etc.
+- Make own UI Style
+- Create Marker-Types (Food, Hidden Gems, Must-See)
+- Create Marker-Klasses for different Trips
+- Create a Option to not import all your Markers to a shared Map
+- Implement a max number of maps (for making a premium Abbonement)
+- Create different Marker-Models for each friend in a shared Map 
+  
