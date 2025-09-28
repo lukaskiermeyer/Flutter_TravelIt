@@ -1,57 +1,22 @@
+// lib/screens/LoginPage.dart
 import 'package:flutter/material.dart';
-import 'package:mysql1/mysql1.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'HomeScreen.dart';
-import 'RegisterPage.dart';
+import 'package:provider/provider.dart';
+import 'package:zapp/screens/HomeScreen.dart';
+import 'package:zapp/screens/RegisterPage.dart';
+import 'package:zapp/services/auth_service.dart';
 
-class LoginPage extends StatefulWidget {
-  @override
-  _LoginPageState createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
+class LoginPage extends StatelessWidget {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  late MySqlConnection _conn;
-  final _storage = const FlutterSecureStorage();
-
-  @override
-  void initState() {
-    super.initState();
-    _connectToDatabase();
-    _retrieveCredentials();
-  }
-
-  Future<void> _connectToDatabase() async {
-    _conn = await MySqlConnection.connect(ConnectionSettings(
-      host: 'sql7.freesqldatabase.com',
-      port: 3306,
-      user: 'sql7712971',
-      db: 'sql7712971',
-      password: 'YnYC9zjPM1',
-    ));
-  }
-
-  Future<void> _retrieveCredentials() async {
-    final username = await _storage.read(key: 'username');
-    final password = await _storage.read(key: 'password');
-    if (username != null && password != null) {
-      _usernameController.text = username;
-      _passwordController.text = password;
-    }
-  }
-
-  Future<void> _storeCredentials(String username, String password) async {
-    await _storage.write(key: 'username', value: username);
-    await _storage.write(key: 'password', value: password);
-  }
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Login'),
+        title: const Text('Login'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -91,16 +56,15 @@ class _LoginPageState extends State<LoginPage> {
               ElevatedButton(
                 onPressed: () async {
                   if (_formKey.currentState!.validate()) {
-                    String username = _usernameController.text;
-                    String password = _passwordController.text;
-                    final result = await _conn.query("SELECT * FROM travelit_users WHERE username = ? OR email = ? AND password = ?", [username, username, password]);
-                    if (result.isNotEmpty) {
-                      final username = result.first['username'];
-                      final userid = result.first['id'];
-                      await _storeCredentials(username, password);
-                      Navigator.of(context).push(
+                    final success = await authService.login(
+                      _usernameController.text,
+                      _passwordController.text,
+                    );
+
+                    if (success) {
+                      Navigator.of(context).pushReplacement(
                         MaterialPageRoute(
-                          builder: (context) => MyHomePage(username: username, userid: userid ),
+                          builder: (context) => const MyHomePage(),
                         ),
                       );
                     } else {

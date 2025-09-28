@@ -1,134 +1,34 @@
+// lib/screens/SearchFriends.dart
 import 'package:flutter/material.dart';
-import 'package:mysql1/mysql1.dart';
+import 'package:provider/provider.dart';
+import 'package:zapp/services/friend_service.dart';
+import 'package:zapp/services/auth_service.dart';
 
-class UserResult {
-  final String username;
-  final int userId;
-
-  UserResult({required this.username, required this.userId});
-}
-
-class MapResult {
-  final int mapId;
-  final String mapTitle;
-
-  MapResult({required this.mapId, required this.mapTitle});
-}
-
-class SearchfriendsPage extends StatefulWidget {
-  final String username;
-  final int userId;
-
-  const SearchfriendsPage({super.key, required this.username, required this.userId});
+class SearchFriendsPage extends StatefulWidget {
+  const SearchFriendsPage({super.key});
 
   @override
-  _SearchfriendsPage createState() => _SearchfriendsPage();
+  _SearchFriendsPageState createState() => _SearchFriendsPageState();
 }
 
-class _SearchfriendsPage extends State<SearchfriendsPage> {
-  late MySqlConnection _conn;
+class _SearchFriendsPageState extends State<SearchFriendsPage> {
   final _formKey = GlobalKey<FormState>();
   final _searchController = TextEditingController();
   final _mapNameController = TextEditingController();
-  List<UserResult> _searchResults = [];
-  String? _selectedUsername;
-  String? _mapName;
-  int? _selectedUserId;
-  List<MapResult> _mapResults = [];
-  UserResult? _selectedUserResult;
-  MapResult? _selectedMapResult;
-
-  @override
-  void initState() {
-    super.initState();
-    _connectToDatabase();
-  }
-
-  Future<void> _connectToDatabase() async {
-    _conn = await MySqlConnection.connect(ConnectionSettings(
-      host: 'sql7.freesqldatabase.com',
-      port: 3306,
-      user: 'sql7712971',
-      db: 'sql7712971',
-      password: 'YnYC9zjPM1',
-    ));
-  }
-
-  Future<void> _addMapWithUser(String mapname, int userid) async {
-    // Check if the map title already exists for the user
-    final existingMap = await _conn.query(
-      'SELECT id FROM travelit_maps WHERE title = ? AND created_by = ?',
-      [mapname, widget.userId],
-    );
-
-    if (existingMap.isNotEmpty) {
-      //alert that user is already in a map with this name
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You already have a map with this name'),
-        ),
-      );
-
-    } else {
-      // Create a new map
-      _conn.query(
-        'INSERT INTO travelit_maps (title, created_by) VALUES (?, ?)',
-        [mapname, widget.userId],
-      );
-      final mapId = await _conn.query('SELECT id FROM travelit_maps WHERE title = ? AND created_by = ?', [mapname, widget.userId]);
-      final mapIdValue = mapId.first.fields['id'];
-
-      await _conn.query(
-        'INSERT INTO travelit_mapusers (map_id, user_id, invited_by) VALUES (?, ?, ?)',
-        [mapIdValue, widget.userId, widget.userId],
-      );
-      await _conn.query(
-        'INSERT INTO travelit_mapusers (map_id, user_id, invited_by) VALUES (?, ?, ?)',
-        [mapIdValue, _selectedUserId, widget.userId],
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Map created successfully'),
-        ),
-      );
-    }
-  }
-
-  Future<List<UserResult>> _searchForUser(String userid) async {
-    final results = await _conn.query('SELECT id, username FROM travelit_users WHERE id = ?', [userid]);
-    List<UserResult> userResults = [];
-
-    if (results.isNotEmpty) {
-      for (var row in results) {
-        String username = row.fields['username'];
-        int userId = row.fields['id'];
-        UserResult userResult = UserResult(username: username, userId: userId);
-        userResults.add(userResult);
-      }
-    }
-    return userResults;
-  }
-
-  Future<List<MapResult>> _getMapsForUser(int userId) async {
-    final results = await _conn.query('SELECT DISTINCT tm.id, tm.title  FROM travelit_maps tm LEFT JOIN travelit_mapusers mu ON tm.id = mu.map_id WHERE tm.id NOT IN (SELECT map_id FROM travelit_mapusers WHERE user_id = ?) AND created_by = ? OR mu.user_id = ?;', [userId, widget.userId, widget.userId]);
-    List<MapResult> mapResults = [];
-    if (results.isNotEmpty) {
-      for (var row in results) {
-        int mapId = row.fields['id'];
-        String mapTitle = row.fields['title'];
-        MapResult mapResult = MapResult(mapId: mapId, mapTitle: mapTitle);
-        mapResults.add(mapResult);
-      }
-    }
-    return mapResults;
-  }
+  List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _mapResults = [];
+  Map<String, dynamic>? _selectedUserResult;
+  Map<String, dynamic>? _selectedMapResult;
 
   @override
   Widget build(BuildContext context) {
+    final friendService = Provider.of<FriendService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final currentUserId = authService.currentUser!.id;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search Friends')
+        title: const Text('Search Friends'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -136,7 +36,7 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
           key: _formKey,
           child: Column(
             children: [
-              Text('Your ID: ${widget.userId}'),
+              Text('Your ID: $currentUserId'),
               const SizedBox(height: 4),
               TextFormField(
                 controller: _searchController,
@@ -155,12 +55,15 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
               ElevatedButton(
                 onPressed: () async {
                   if (_formKey.currentState!.validate()) {
-                    _selectedUsername = null;
-                    _selectedUserId = null;
-                    _selectedUserResult = null;
-                    _searchResults = await _searchForUser(_searchController.text);
-                    setState(() {
-                    });
+                    final userIdToSearch = int.tryParse(_searchController.text);
+                    if (userIdToSearch != null) {
+                      _searchResults = await friendService.searchForUser(userIdToSearch);
+                      setState(() {
+                        _selectedUserResult = _searchResults.isNotEmpty ? _searchResults.first : null;
+                        _mapResults = [];
+                        _selectedMapResult = null;
+                      });
+                    }
                   }
                 },
                 child: const Text('Search'),
@@ -171,104 +74,94 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text("Select User"),
-                    DropdownButton<UserResult>(
+                    DropdownButton<Map<String, dynamic>>(
                       value: _selectedUserResult,
                       items: _searchResults.map((result) {
-                        return DropdownMenuItem<UserResult>(
+                        return DropdownMenuItem<Map<String, dynamic>>(
                           value: result,
-                          child: Text(result.username),
+                          child: Text(result['username']),
                         );
                       }).toList(),
                       onChanged: (value) async {
                         _selectedUserResult = value;
-                        _mapResults = await _getMapsForUser(value!.userId);
+                        if (value != null) {
+                          _mapResults = await friendService.getMapsForUser(currentUserId);
+                        } else {
+                          _mapResults = [];
+                        }
                         setState(() {
-                          if (value.userId != widget.userId) {
-                            _selectedUsername = value.username;
-                            _selectedUserId = value.userId;
-                          } else {
-                            _selectedUsername = null;
-                            _selectedUserId = null;
-                          }
+                          _selectedMapResult = null;
                         });
                       },
                     ),
                     const SizedBox(height: 16),
-                    if (_selectedUsername != null)
+                    if (_selectedUserResult != null && _selectedUserResult!['id'] != currentUserId)
                       Column(
                         children: [
                           ElevatedButton(
                             onPressed: () async {
-                              _mapName = await showDialog(
-                                context: context,
-                                builder: (context) {
-                                  return AlertDialog(
-                                    title: const Text('Create a new map'),
-                                    content: TextFormField(
-                                      controller: _mapNameController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Map name',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                        },
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {
-                                           _mapName = _mapNameController.text;
-                                          _addMapWithUser(_mapName!, _selectedUserId!);
-                                          Navigator.pop(context);
-                                          _searchController.clear();
-                                          _mapNameController.clear();
-                                          _searchResults = [];
-                                          setState(() {});
-
-                                        },
-                                        child: const Text('Create'),
-                                      ),
-                                    ],
+                              final mapName = await _showCreateMapDialog(context);
+                              if (mapName != null) {
+                                final success = await friendService.addMapWithUser(
+                                    mapName, _selectedUserResult!['id'], currentUserId);
+                                if (success) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Map created and user invited successfully!')),
                                   );
-                                },
-                              );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Failed to create map or map name exists.')),
+                                  );
+                                }
+                                setState(() {
+                                  _searchResults = [];
+                                  _mapResults = [];
+                                  _selectedUserResult = null;
+                                  _searchController.clear();
+                                });
+                              }
                             },
                             child: const Text('Invite User to new Map'),
                           ),
                           const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: (){ //TODO Add to check if map is selected, then add user to map
-                                          if(_selectedMapResult != null){
-                                          _conn.query('INSERT INTO travelit_mapusers (map_id, user_id, invited_by) VALUES (?, ?, ?)', [_mapResults[0].mapId, _selectedUserId, widget.userId]);
-                                          setState(() {
-                                          _searchController.clear();
-                                          _mapNameController.clear();
-                                          _searchResults = [];
-                                          _mapResults = [];
-                                          _selectedMapResult = null;
-                                          _selectedUsername = null;
-                                          _selectedUserId = null;
-                                          _selectedUserResult = null;
-                                          });
-                                          }
-                                          else{
-                                          //alert "SELECT MAP"
-                                          ScaffoldMessenger.of(context).showSnackBar( const SnackBar( content: Text('Please select a map'), ), );
-                                          }
-                                          },
-                            child: const Text('Invite User to existing Map'),
-                          ),
+                          if (_mapResults.isNotEmpty)
+                            ElevatedButton(
+                              onPressed: () async {
+                                if (_selectedMapResult != null) {
+                                  final success = await friendService.addUserToExistingMap(
+                                      _selectedMapResult!['id'], _selectedUserResult!['id'], currentUserId);
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('User added to map successfully!')),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Failed to add user to map.')),
+                                    );
+                                  }
+                                  setState(() {
+                                    _searchResults = [];
+                                    _mapResults = [];
+                                    _selectedUserResult = null;
+                                    _selectedMapResult = null;
+                                    _searchController.clear();
+                                  });
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Please select a map')),
+                                  );
+                                }
+                              },
+                              child: const Text('Invite User to existing Map'),
+                            ),
                           const SizedBox(height: 16),
                           if (_mapResults.isNotEmpty)
-                            DropdownButton(
+                            DropdownButton<Map<String, dynamic>>(
                               value: _selectedMapResult,
                               items: _mapResults.map((result) {
-                                return DropdownMenuItem<MapResult>(
+                                return DropdownMenuItem<Map<String, dynamic>>(
                                   value: result,
-                                  child: Text(result.mapTitle),
+                                  child: Text(result['title']),
                                 );
                               }).toList(),
                               onChanged: (value) {
@@ -281,7 +174,7 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
                       ),
                   ],
                 ),
-              if (_searchResults.isEmpty)
+              if (_searchResults.isEmpty && _searchController.text.isNotEmpty)
                 const Text('No results found'),
             ],
           ),
@@ -289,5 +182,36 @@ class _SearchfriendsPage extends State<SearchfriendsPage> {
       ),
     );
   }
-}
 
+  Future<String?> _showCreateMapDialog(BuildContext context) async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create a new map'),
+          content: TextFormField(
+            controller: _mapNameController,
+            decoration: const InputDecoration(
+              labelText: 'Map name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final mapName = _mapNameController.text;
+                Navigator.pop(context, mapName);
+                _mapNameController.clear();
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}

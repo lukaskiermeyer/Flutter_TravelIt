@@ -1,325 +1,187 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:mysql1/mysql1.dart';
-import 'EditMarkerPage.dart';
-import 'SearchFriends.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'package:zapp/models/map_model.dart';
+import 'package:zapp/models/marker_data_model.dart';
+import 'package:zapp/screens/EditMarkerPage.dart';
+import 'package:zapp/screens/LocationDetailsPage.dart';
+import 'package:zapp/screens/SearchFriends.dart';
+import 'package:zapp/services/auth_service.dart';
+import 'package:zapp/services/color_service.dart';
+import 'package:zapp/services/geo_service.dart';
+import 'package:zapp/services/map_service.dart';
+
+import 'LoginPage.dart';
 
 class MyHomePage extends StatefulWidget {
-  final String username;
-  final int userid;
-
-   const MyHomePage({super.key, required this.username, required this.userid});
+  const MyHomePage({super.key});
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  State<MyHomePage> createState() => _MyHomePageState();
 }
-
-
-class _map {
-  late final int id;
-  late final String name;
-  late List<int> users;
-
-  _map({required this.id, required this.name});
-
-  void setUsers(List<int> users) {
-    this.users = users;
-  }
-}
-
-class _userMarker{
-  late final int id;
-  late final String username;
-  late final String? title;
-  late final String? description;
-  late final String? ranking;
-  late final LatLng point;
-  late final Color color;
-
-  _userMarker({required this.id, required this.username, required this.title, required this.description, required this.ranking, required this.point, required this.color});
-
-}
-
-
 
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   final TextEditingController _searchTextController = TextEditingController();
-  final List<Marker> _markers = [];
   final List<Marker> _currentMarker = [];
-  final List<_userMarker> _userMarkers = [];
-  late List<String> _suggestions = [];
-  late MySqlConnection _conn;
-  late final List<_map> _maps = [_map(id:0, name:'Meine Map')];
-  late _map _selectedMap;
-  static const String apiKey = "b95c8ec314774f969029f107534ead70";
   bool _isPanelVisible = false;
-
-  final List<Color> _userColors = [
-    Colors.black,
-    Colors.red,
-    Colors.blue,
-    Colors.green,
-    Colors.yellow,
-    Colors.purple,
-    Colors.orange,
-    Colors.pink,
-    Colors.teal,
-    Colors.brown,
-  ];
-
+  List<String> _suggestions = [];
 
   @override
   void initState() {
     super.initState();
-    _maps[0].setUsers([widget.userid]);
-    _selectedMap = _maps[0];
-    _connectToDatabase();
-
-  }
-
-  Future<void> _connectToDatabase() async {
-    _conn = await MySqlConnection.connect(ConnectionSettings(
-      host: 'sql7.freesqldatabase.com',
-      port: 3306,
-      user: 'sql7712971',
-      db: 'sql7712971',
-      password: 'YnYC9zjPM1',
-    ));
-
-    _fillMaps();
-    _loadMarkersFromDatabase();
-
-  }
-
-
-  Future<void> _loadMarkersFromDatabase() async {
-    _markers.clear();
-    _userMarkers.clear();
-
-    for (var i = 0; i < _selectedMap.users.length; i++) {
-      final results = await _conn.query(
-          'SELECT m.id, m.latitude, m.longitude, m.title, m.description, m.ranking, tu.username FROM markers m JOIN travelit_users tu ON tu.id = m.userId WHERE userid = ?;', [_selectedMap.users[i]]);
-        for (var row in results) {
-        _markers.add(
-          Marker(
-            point: LatLng(row[1], row[2]),
-            width: 30,
-            height: 30,
-            child: Icon(
-              Icons.location_pin,
-              color: _userColors[i],
-            ),
-          ),
-        );
-        late String ranking;
-        late String description;
-        if (row[5] != null) {
-          ranking = row[5].toStringAsFixed(1);
-        }
-        else {
-          ranking = " ";
-        }
-        if (row[4] != null) {
-          description = row[4].toString();
-        }
-        else {
-          description = " ";
-        }
-
-        _userMarkers.add(
-          _userMarker(
-            id: row[0],
-            point: LatLng(row[1], row[2]),
-            title:  row[3] ?? '',
-            description: description,
-            ranking: ranking,
-            username: row[6],
-            color: _userColors[i],
-          ),
-        );
-      }
-    }
-
-    setState(() {});
-  }
-
-
-  Future<LatLng> _getCoordinates(String city) async {
-    final url = "https://api.geoapify.com/v1/geocode/search?text=$city&format=json&apiKey=$apiKey";
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final jsonData = jsonDecode(response.body);
-      return LatLng(jsonData['results'][0]['lat'], jsonData['results'][0]['lon']);
-    } else {
-      throw Exception("Failed to get coordinates");
-    }
-  }
-
-  Future<List<String>> _getAutoComplete(String city) async {
-    final url = "https://api.geoapify.com/v1/geocode/autocomplete?text=$city&format=json&apiKey=$apiKey";
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final jsonData = jsonDecode(response.body);
-      return List<String>.from(jsonData['results'].map((result) => result['formatted']));
-    } else {
-      throw Exception("Failed to get autocomplete suggestions");
-    }
-  }
-
-
-  Future<void> _fillMaps() async {
-    final results = await _conn.query('SELECT DISTINCT tu.map_id, tm.title FROM travelit_mapusers tu JOIN travelit_maps tm ON tu.map_id = tm.id WHERE user_id = ?;', [widget.userid]);
-    for (var row in results) {
-      final map = _map(
-        id: row[0],
-        name: row[1],
-      );
-      _maps.add(map);
-
-    }
-
-    for(var i = 1; i < _maps.length; i++) {
-
-      final results = await _conn.query('SELECT user_id FROM travelit_mapusers WHERE map_id = ?', [_maps[i].id]);
-      List<int> users = [];
-      for (var row in results) {
-        users.add(row[0]);
-      }
-      _maps[i].setUsers(users);
-    }
-
-    _selectedMap = _maps[0];
-    setState(() {});
-  }
-
-  Future<void> _saveMarkerToDatabase({required String title, required String description, required double ranking}) async {
-    if (_currentMarker.isNotEmpty) {
-      await _conn.query(
-        'INSERT INTO markers (latitude, longitude, userid, title, description, ranking) VALUES (?, ?, ?, ?, ?, ?)',
-        [_currentMarker[0].point.latitude, _currentMarker[0].point.longitude, widget.userid, title, description, ranking],
-      );
-      _loadMarkersFromDatabase();
-    }
+    // Lade die initialen Daten, sobald das Widget erstellt wird
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final mapService = Provider.of<MapService>(context, listen: false);
+    mapService.loadInitialData(authService.currentUser!.id);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Services über Provider abrufen.
+    final geoService = Provider.of<GeoService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            DropdownButton<_map>(
-              value: _selectedMap,
-              items: _maps.map((map) {
-                return DropdownMenuItem<_map>(
+        title: Consumer<MapService>(
+          builder: (context, mapService, child) {
+            return DropdownButton<MapModel>(
+              value: mapService.selectedMap,
+              items: mapService.maps.map((map) {
+                return DropdownMenuItem<MapModel>(
                   value: map,
                   child: Text(map.name),
                 );
               }).toList(),
               onChanged: (value) {
-                setState(() {
-                  _selectedMap = value!;
-                  _loadMarkersFromDatabase();
-                });
+                if (value != null) {
+                  mapService.selectMapAndLoadMarkers (value);
+                }
               },
-            ),
-          ],
+            );
+          },
         ),
         actions: [
-          PopupMenuButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.menu),
-            onSelected: (value) {
-              if (value == 'Edit Marker') {
+            onSelected: (value) async {
+              final user = authService.currentUser;
+              if (user == null) {
+                // Führe nichts aus, wenn der Benutzer nicht eingeloggt ist.
+                return;
+              }
+
+              if (value == 'editMarker') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => EditMarkerPage(
-                      username: widget.username,
-                      userId: widget.userid,
-                    ),
+                    builder: (context) => const EditMarkerPage(),
                   ),
                 );
-              } else if (value == 'Find Friends') {
+              } else if (value == 'findFriends') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => SearchfriendsPage(
-                      username: widget.username,
-                      userId: widget.userid,
-                    ),
+                    builder: (context) => const SearchFriendsPage(),
                   ),
+                );
+              } else if (value == 'logout') {
+                await authService.logout();
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => LoginPage()),
+                      (Route<dynamic> route) => false,
                 );
               }
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'User Info',
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    'User: ${widget.username}, ID: ${widget.userid}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16.0,
+            itemBuilder: (BuildContext context) {
+              return [
+                PopupMenuItem<String>(
+                  value: 'userInfo',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'User: ${authService.currentUser?.username ?? 'N/A'}, ID: ${authService.currentUser?.id ?? 'N/A'}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16.0,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'Edit Marker',
-                child: Text('Edit Marker'),
-              ),
-              const PopupMenuItem(
-                value: 'Find Friends',
-                child: Text('Find Friends'),
-              ),
-            ],
+                const PopupMenuItem<String>(
+                  value: 'editMarker',
+                  child: Text('Edit Marker'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'findFriends',
+                  child: Text('Find Friends'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Text('Logout'),
+                ),
+              ];
+            },
           ),
         ],
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: const LatLng(51.509364, -0.128928),
-              initialZoom: 4,
-              onTap: (point, latLng) {
-                setState(() {
-                  if (_currentMarker.isNotEmpty) {
-                    _currentMarker[0] = Marker(
-                      point: latLng,
-                      width: 200,
-                      height: 200,
-                      child: const Icon(Icons.location_on_outlined),
-                    );
-                  } else {
-                    _currentMarker.add(
-                      Marker(
-                        point: latLng,
-                        width: 200,
-                        height: 200,
-                        child: const Icon(Icons.location_on_outlined),
-                      ),
-                    );
-                  }
-                });
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.app',
-              ),
-              MarkerLayer(
-                markers: [..._markers, ..._currentMarker],
-              ),
-            ],
+          Consumer<MapService>(
+            builder: (context, mapService, child) {
+              final colorService = Provider.of<ColorService>(context, listen: false);
+              final List<Marker> markers = mapService.markers.map((markerData) {
+                return Marker(
+                  point: LatLng(markerData.latitude, markerData.longitude),
+                  width: 30,
+                  height: 30,
+                  child: Icon(
+                    Icons.location_pin,
+                    color: colorService.getColorForUser(markerData.userId),
+                  ),
+                );
+              }).toList();
+
+              return FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: const LatLng(51.509364, -0.128928),
+                  initialZoom: 4,
+                  onTap: (point, latLng) {
+                    setState(() {
+                      if (_currentMarker.isNotEmpty) {
+                        _currentMarker[0] = Marker(
+                          point: latLng,
+                          width: 200,
+                          height: 200,
+                          child: const Icon(Icons.location_on_outlined),
+                        );
+                      } else {
+                        _currentMarker.add(
+                          Marker(
+                            point: latLng,
+                            width: 200,
+                            height: 200,
+                            child: const Icon(Icons.location_on_outlined),
+                          ),
+                        );
+                      }
+                    });
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.app',
+                  ),
+                  MarkerLayer(
+                    markers: [...markers, ..._currentMarker],
+                  ),
+                ],
+              );
+            },
           ),
           Align(
             alignment: Alignment.topCenter,
@@ -341,10 +203,14 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     onChanged: (value) async {
                       if (value.isNotEmpty) {
-                        var suggestions = await _getAutoComplete(value);
-                        setState(() {
-                          _suggestions = suggestions;
-                        });
+                        try {
+                          final suggestions = await geoService.getAutoComplete(value);
+                          setState(() {
+                            _suggestions = suggestions;
+                          });
+                        } catch (e) {
+                          print("Fehler beim Abrufen der Vorschläge: $e");
+                        }
                       }
                     },
                   ),
@@ -363,12 +229,16 @@ class _MyHomePageState extends State<MyHomePage> {
                           return ListTile(
                             title: Text(_suggestions[index]),
                             onTap: () async {
-                              LatLng coordinates = await _getCoordinates(_suggestions[index]);
-                              _mapController.move(coordinates, 17.0);
-                              setState(() {
-                                _suggestions.clear();
-                                _searchTextController.clear();
-                              });
+                              try {
+                                final coordinates = await geoService.getCoordinates(_suggestions[index]);
+                                _mapController.move(coordinates, 17.0);
+                                setState(() {
+                                  _suggestions.clear();
+                                  _searchTextController.clear();
+                                });
+                              } catch (e) {
+                                print("Fehler beim Abrufen der Koordinaten: $e");
+                              }
                             },
                           );
                         },
@@ -388,90 +258,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ElevatedButton(
                     onPressed: () async {
                       if (_currentMarker.isNotEmpty) {
-                        await showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            String title = '';
-                            String description = '';
-                            double ranking = 0.0;
-
-                            return StatefulBuilder(
-                              builder: (context, setState) {
-                                return AlertDialog(
-                                  title: const Text('Enter Marker Details'),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      TextField(
-                                        decoration: const InputDecoration(labelText: 'Title'),
-                                        onChanged: (value) {
-                                          title = value;
-                                        },
-                                      ),
-                                      TextField(
-                                        decoration: const InputDecoration(labelText: 'Description'),
-                                        onChanged: (value) {
-                                          description = value;
-                                        },
-                                      ),
-                                      TextField(
-                                        decoration: const InputDecoration(labelText: 'Ranking [0.0-10.0]'),
-                                        keyboardType: TextInputType.number,
-                                        onChanged: (value) {
-                                          ranking = double.tryParse(value) ?? 0.0;
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: const Text('Cancel'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        // Validierung der Eingaben
-                                        if (title.isEmpty || description.isEmpty || ranking < 0.0 || ranking > 10.0) {
-                                          await showDialog(
-                                            context: context,
-                                            builder: (BuildContext context) {
-                                              return AlertDialog(
-                                                title: const Text('Ungültige Eingabe'),
-                                                content: const Text('Die eingegebene Zahl ist ungültig!'),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () {
-                                                      Navigator.of(context).pop();
-                                                    },
-                                                    child: const Text('OK'),
-                                                  ),
-                                                ],
-                                              );
-                                            },
-                                          );
-                                          return; // Beende die Methode, wenn die Eingabe ungültig ist
-                                        }
-
-                                        await _saveMarkerToDatabase(
-                                          title: title,
-                                          description: description,
-                                          ranking: ranking,
-                                        );
-                                        setState(() {
-                                          _currentMarker.clear();
-                                        });
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: const Text('Save'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                        );
+                        await _showSaveDialog(context);
                       }
                     },
                     child: const Text('Save Marker'),
@@ -507,7 +294,6 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           ),
-          // Sliding panel
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             right: _isPanelVisible ? 0 : -MediaQuery.of(context).size.width,
@@ -530,23 +316,41 @@ class _MyHomePageState extends State<MyHomePage> {
                     title: const Text('Marker Details'),
                   ),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: _userMarkers.length,
-                      itemBuilder: (context, index) {
-                        final marker = _userMarkers[index];
-                        return ListTile(
-                          title: Text("${marker.title} von ${marker.username}"),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Description: ${marker.description}"),
-                              Text("Ranking: ${marker.ranking}"),
-                              Text("Lat: ${marker.point.latitude}, Lng: ${marker.point.longitude}"),
-                            ],
-                          ),
-                          leading: CircleAvatar(
-                            backgroundColor: marker.color,
-                          ),
+                    child: Consumer<MapService>(
+                      builder: (context, mapService, child) {
+                        return ListView.builder(
+                          itemCount: mapService.markers.length,
+                          itemBuilder: (context, index) {
+                            final marker = mapService.markers[index];
+                            final color = Provider.of<ColorService>(context, listen: false).getColorForUser(marker.userId);
+                            return ListTile(
+                              title: Text("${marker.title} von ${marker.username}"),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Description: ${marker.description}"),
+                                  Text("Ranking: ${marker.ranking}"),
+                                  Text("Lat: ${marker.latitude}, Lng: ${marker.longitude}"),
+                                ],
+                              ),
+                              leading: CircleAvatar(
+                                backgroundColor: color,
+                              ),
+                              onTap: () async {
+                                final cityName = await geoService.getCountyName(marker.latitude, marker.longitude);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => LocationDetailPage(
+                                      latitude: marker.latitude,
+                                      longitude: marker.longitude,
+                                      cityName: cityName,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         );
                       },
                     ),
@@ -559,9 +363,83 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+
+  Future<void> _showSaveDialog(BuildContext context) async {
+    String title = '';
+    String description = '';
+    double ranking = 0.0;
+
+    final mapService = Provider.of<MapService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Enter Marker Details'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Title'),
+                    onChanged: (value) => title = value,
+                  ),
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Description'),
+                    onChanged: (value) => description = value,
+                  ),
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Ranking [0.0-10.0]'),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) => ranking = double.tryParse(value) ?? 0.0,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (title.isEmpty || ranking < 0.0 || ranking > 10.0) {
+                      await showDialog(
+                        context: context,
+                        builder: (BuildContext context) => AlertDialog(
+                          title: const Text('Invalid Input'),
+                          content: const Text('Please provide a title and a valid ranking.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
+
+                    await mapService.saveMarker(
+                      point: _currentMarker.first.point,
+                      title: title,
+                      description: description,
+                      ranking: ranking,
+                      userId: authService.currentUser!.id,
+                    );
+                    setState(() {
+                      _currentMarker.clear();
+                    });
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 }
-
-
-
-
-

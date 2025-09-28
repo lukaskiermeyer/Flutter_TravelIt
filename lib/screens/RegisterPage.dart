@@ -1,40 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:mysql1/mysql1.dart';
+import 'package:provider/provider.dart';
 import 'package:zapp/screens/LoginPage.dart';
+import 'package:zapp/services/auth_service.dart';
 
-import 'HomeScreen.dart';
-
-class RegisterPage extends StatefulWidget {
-  @override
-  _RegisterPageState createState() => _RegisterPageState();
-}
-
-class _RegisterPageState extends State<RegisterPage> {
+class RegisterPage extends StatelessWidget {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  late MySqlConnection _conn;
-
-  @override
-  void initState() {
-    super.initState();
-    _connectToDatabase();
-  }
-
-  Future<void> _connectToDatabase() async {
-    _conn = await MySqlConnection.connect(ConnectionSettings(
-      host: 'sql7.freesqldatabase.com',
-      port: 3306,
-      user: 'sql7712971',
-      db: 'sql7712971',
-      password: 'YnYC9zjPM1',
-    ));
-  }
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Register'),
@@ -112,29 +91,20 @@ class _RegisterPageState extends State<RegisterPage> {
               ElevatedButton(
                 onPressed: () async {
                   if (_formKey.currentState!.validate()) {
-                    String username = _usernameController.text;
-                    String password = _passwordController.text;
-                    String email = _emailController.text;
-                    try {
-                      var results = await _conn.query("SELECT * FROM travelit_users WHERE email = ?", [email]);
-                      if (results.isNotEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Email already exists'),
-                          ),
-                        );
-                        return;
-                      }
-                      await _conn.query("INSERT INTO travelit_users (email, username, password) VALUES (?, ?, ?)", [email, username, password]);
+                    final success = await authService.register(
+                      _emailController.text,
+                      _usernameController.text,
+                      _passwordController.text,
+                    );
+
+                    if (success) {
                       Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => LoginPage(),
-                        ),
+                        MaterialPageRoute(builder: (context) => LoginPage()),
                       );
-                    } catch (e) {
+                    } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Registration failed: $e'),
+                        const SnackBar(
+                          content: Text('Registration failed. Username or email may already exist.'),
                         ),
                       );
                     }

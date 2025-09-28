@@ -1,48 +1,30 @@
-import 'dart:convert';
+// lib/screens/EditMarkerPage.dart
 import 'package:flutter/cupertino.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
-import 'package:mysql1/mysql1.dart';
-
-import 'HomeScreen.dart';
+import 'package:provider/provider.dart';
+import 'package:zapp/models/marker_data_model.dart';
+import 'package:zapp/screens/HomeScreen.dart';
+import 'package:zapp/services/auth_service.dart';
+import 'package:zapp/services/map_service.dart';
 
 class EditMarkerPage extends StatefulWidget {
-  final int userId;
-  final String username;
-
-  const EditMarkerPage({super.key, required this.userId, required this.username});
+  const EditMarkerPage({super.key});
 
   @override
   _EditMarkerPageState createState() => _EditMarkerPageState();
 }
 
-class dropDownMarker {
-  final double latitude;
-  final double longitude;
-  final Future<String> formatted;
-  final int id;
-  dropDownMarker(this.latitude, this.longitude, this.formatted, this.id);
-
-}
-
 class _EditMarkerPageState extends State<EditMarkerPage> {
-  late TextEditingController _titleController;
-  late TextEditingController _descriptionController;
-  late double _ranking;
-  late MySqlConnection _conn;
-  late List<dropDownMarker> markers = [];
-  dropDownMarker? _selectedMarker;
-  static const String apiKey = "b95c8ec314774f969029f107534ead70";
-
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  double _ranking = 5.0;
+  MarkerData? _selectedMarker;
+  List<MarkerData> _userMarkers = [];
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController();
-    _descriptionController = TextEditingController();
-    _ranking = 5.0;
-    _selectedMarker = null;
-    _connectToDatabase();
+    _loadMarkers();
   }
 
   @override
@@ -52,96 +34,32 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
     super.dispose();
   }
 
-  Future<String> getCountyName(double lat, double long, String type) async {
-    final url = "https://api.geoapify.com/v1/geocode/reverse?lat=$lat&lon=$long&type=$type&apiKey=$apiKey";
-    final response = await http.get(Uri.parse(url));
-    return jsonDecode(response.body)['features'][0]['properties']['formatted'];
-  }
-
-  Future<void> _fillMarkerList() async {
-    markers.clear();
-    final results = await _conn.query('SELECT * FROM markers WHERE userId = ?',
-        [widget.userId]);
-
-    for (var row in results) {
-      markers.add(
-          dropDownMarker(
-              row[1], row[2], getCountyName(row[1], row[2], "city"), row[0]
-          )
-      );
-    }
+  Future<void> _loadMarkers() async {
+    final mapService = Provider.of<MapService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+    _userMarkers = await mapService.loadUserMarkers(authService.currentUser!.id);
     setState(() {});
   }
 
-  Future<void> _storeInfosInDatabase() async {
-    if (_selectedMarker != null) {
-      await _conn.query(
-        'UPDATE markers SET title = ?, description = ?, ranking = ? WHERE latitude = ? AND longitude = ? AND userId = ?',
-        [
-          _titleController.text,
-          _descriptionController.text,
-          _ranking,
-          _selectedMarker!.latitude,
-          _selectedMarker!.longitude,
-          widget.userId,
-        ],
-      );
-    }
-  }
-
-  Future<void> _connectToDatabase() async {
-    _conn = await MySqlConnection.connect(ConnectionSettings(
-      host: 'sql7.freesqldatabase.com',
-      port: 3306,
-      user: 'sql7712971',
-      db: 'sql7712971',
-      password: 'YnYC9zjPM1',
-    ));
-    _fillMarkerList();
-  }
-
-  Future<void> fillFields() async {
-    if (_selectedMarker != null) {
-      final results = await _conn.query(
-        'SELECT * FROM markers WHERE latitude = ? AND longitude = ? AND userId = ?',
-        [_selectedMarker!.latitude, _selectedMarker!.longitude, widget.userId],
-      );
-      if (results.isNotEmpty) {
-        final row = results.first;
-         setState(() {
-          _titleController.text = row['title'] ?? '';
-          if (row['description'] == null) {
-            _descriptionController.text = "";
-          } else {
-            _descriptionController.text = row['description'].toString();
-          }
-          _ranking = row['ranking'] ?? 5.0;
-        });
-      } else {
-        setState(() {
-          _titleController.text = '';
-          _descriptionController.text = '';
-          _ranking = 5.0;
-        });
-      }
-    }
+  void _fillFields(MarkerData marker) {
+    _titleController.text = marker.title ?? '';
+    _descriptionController.text = marker.description ?? '';
+    _ranking = marker.ranking ?? 5.0;
   }
 
   @override
   Widget build(BuildContext context) {
+    final mapService = Provider.of<MapService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
-        leading: ElevatedButton(
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back),
           onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MyHomePage(
-                userid: widget.userId,
-                username: widget.username,
-              )),
-              );
+            // Navigator.pop führt zurück zur vorherigen Seite, ohne neue Seite zu erstellen
+            Navigator.pop(context);
           },
-          child: const Icon(CupertinoIcons.back),
         ),
         title: const Text('Edit Marker'),
       ),
@@ -150,27 +68,20 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButtonFormField<dropDownMarker>(
+            DropdownButtonFormField<MarkerData>(
               value: _selectedMarker,
-              items: markers
-                  .map((marker) => DropdownMenuItem<dropDownMarker>(
+              items: _userMarkers
+                  .map((marker) => DropdownMenuItem<MarkerData>(
                 value: marker,
-                child: FutureBuilder(
-                  future: marker.formatted,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      return Text(snapshot.data ?? '');
-                    } else {
-                      return Text('');
-                    }
-                  },
-                ),
+                child: Text(marker.title ?? 'Marker ID: ${marker.id}'),
               ))
                   .toList(),
               onChanged: (marker) {
                 setState(() {
                   _selectedMarker = marker;
-                  fillFields();
+                  if (marker != null) {
+                    _fillFields(marker);
+                  }
                 });
               },
               decoration: const InputDecoration(
@@ -209,33 +120,33 @@ class _EditMarkerPageState extends State<EditMarkerPage> {
             ),
             const SizedBox(height: 16.0),
             ElevatedButton(
-              onPressed: () {
-                _storeInfosInDatabase();
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => EditMarkerPage(
-                    userId: widget.userId,
-                    username: widget.username,
-                  )),
-                      (Route<dynamic> route) => false,
-                );
+              onPressed: () async {
+                if (_selectedMarker != null) {
+                  await mapService.updateMarker(
+                    markerId: _selectedMarker!.id,
+                    title: _titleController.text,
+                    description: _descriptionController.text,
+                    ranking: _ranking,
+                  );
+                  // Lade die Marker neu, um die Dropdown-Liste zu aktualisieren
+                  await _loadMarkers();
+                  Navigator.pop(context);
+                }
               },
               child: const Text('Save'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (_selectedMarker != null) {
-                  _conn.query(
-                    'DELETE FROM markers WHERE latitude = ? AND longitude = ? AND userId = ?',
-                    [_selectedMarker!.latitude, _selectedMarker!.longitude, widget.userId],
-                  );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => EditMarkerPage(
-                      userId: widget.userId,
-                      username: widget.username,
-                    )),
-                  );
+                  await mapService.deleteMarker(_selectedMarker!.id);
+                  // Lade die Marker neu, um die Dropdown-Liste zu aktualisieren
+                  await _loadMarkers();
+                  setState(() {
+                    _selectedMarker = null;
+                    _titleController.clear();
+                    _descriptionController.clear();
+                    _ranking = 5.0;
+                  });
                 }
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
