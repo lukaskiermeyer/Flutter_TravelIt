@@ -10,6 +10,7 @@ import 'package:zapp/services/geo_service.dart';
 import 'package:zapp/services/location_service.dart';
 import 'package:zapp/services/map_service.dart';
 import 'package:zapp/services/friend_service.dart';
+import 'package:zapp/utils/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,9 +44,7 @@ class TravelitApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Travelit',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: AppTheme.lightTheme,
       home: LoginPage(),
     );
   }
