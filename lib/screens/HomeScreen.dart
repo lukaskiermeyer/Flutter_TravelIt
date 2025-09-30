@@ -47,6 +47,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+
   void _updateFilterState(MapService mapService) {
     final newUniqueUsers = LinkedHashMap<int, String>();
     for (var marker in mapService.markers) {
